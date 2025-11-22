@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>The Dark Knight's Ascent</title>
+    <title>Marcilino Ascent</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Anton&family=Cinzel:wght@700&display=swap');
 
@@ -16,7 +16,7 @@
             overflow: hidden;
             font-family: 'Anton', sans-serif;
             color: white;
-            touch-action: none;
+            touch-action: none; /* Critical for mobile games */
             user-select: none;
             -webkit-user-select: none;
         }
@@ -70,10 +70,31 @@
             box-sizing: border-box;
         }
 
-        #score {
+        #stats-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 5px;
+        }
+
+        #score, #timer {
             font-family: 'Cinzel', serif;
             font-size: 24px;
             text-shadow: 0 0 10px #00d2ff;
+        }
+
+        #timer {
+            color: #ffeb3b; /* Yellow color for time */
+        }
+
+        #controls-hint {
+            text-align: center;
+            font-size: 18px;
+            opacity: 0.7;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            animation: pulse 2s infinite;
         }
 
         #touch-controls {
@@ -206,13 +227,16 @@
 
 <div id="game-container">
     <div id="background-text">
-        MARCILINO<br>ASCENT
+        JESUS<br>IS GOD
     </div>
 
     <canvas id="gameCanvas"></canvas>
 
     <div id="ui-layer">
-        <div id="score">ALTITUDE: 0m | STAGE 1</div>
+        <div id="stats-container">
+            <div id="score">ALTITUDE: 0m | STAGE 1</div>
+            <div id="timer">TIME: 0.00s</div>
+        </div>
         <div id="controls-hint">Arrows to Move • Space to Jump</div>
         
         <div id="touch-controls">
@@ -242,12 +266,14 @@
     <div id="next-level-screen" class="hidden">
         <h1>The Light Reached</h1>
         <p>But the crusade is not over. The Inferno awaits.</p>
+        <p id="stage1-time-result"></p>
         <button id="next-level-btn" class="stage2-btn">Enter The Inferno</button>
     </div>
 
     <div id="win-screen" class="hidden">
         <h1 style="font-size: 6rem;">REDEMPTION</h1>
         <p>You have conquered the darkness and the fire.</p>
+        <p id="stage2-time-result"></p>
         <button id="restart-btn">Play Again</button>
     </div>
 </div>
@@ -257,6 +283,7 @@
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreEl = document.getElementById('score');
+    const timerEl = document.getElementById('timer');
     const container = document.getElementById('game-container');
     
     const startScreen = document.getElementById('start-screen');
@@ -275,6 +302,10 @@
     let score = 0;
     let cameraY = 0;
     let currentStage = 1;
+    
+    // Timer Variables
+    let startTime;
+    let currentTime = 0;
 
     // Level Configurations
     const stages = {
@@ -528,25 +559,43 @@
         platforms = [];
         cameraY = 0;
         score = 0;
+        startTime = Date.now();
         
         // Initial Platform
         platforms.push(new Platform(width/2 - 100, height - 50, 200));
 
-        // Generate Platforms - FIXED DISTANCES HERE
+        // Generate Platforms - BALANCED LOGIC
         let currentY = height - 150;
+        
+        // We need to track where the previous platform X was to ensure the next one isn't impossibly far
+        let prevX = width/2 - 100; 
+        let prevWidth = 200;
+
         while (currentY > -settings.winHeight) {
-            // REDUCED GAP DISTANCE: Was 100 + random*60, now 70 + random*50
-            let gap = 70 + Math.random() * 50; 
+            // Closer vertical gap (50 to 110) - Guarantees reachability
+            let gap = 50 + Math.random() * 60; 
             if(currentStage === 2) gap += 20; 
             
             currentY -= gap;
             
-            // INCREASED WIDTH: Was 80 + random*100, now 100 + random*80
+            // Wide platforms (100 to 180 width)
             let pWidth = 100 + Math.random() * 80;
             if(currentStage === 2) pWidth -= 20;
 
-            let pX = Math.random() * (width - pWidth);
+            // Intelligent Horizontal Placement
+            // Instead of totally random, ensure it's roughly reachable from the previous one
+            let minX = Math.max(0, prevX - 250); // Can move left up to 250px
+            let maxX = Math.min(width - pWidth, prevX + prevWidth + 250 - pWidth); // Can move right up to 250px
+            
+            // Fallback if math breaks (rare)
+            if (minX > maxX) { minX = 0; maxX = width - pWidth; }
+
+            let pX = minX + Math.random() * (maxX - minX);
+            
             platforms.push(new Platform(pX, currentY, pWidth));
+            
+            prevX = pX;
+            prevWidth = pWidth;
         }
     }
 
@@ -554,6 +603,11 @@
         if (!gameActive) return;
 
         player.update();
+
+        // Update Timer
+        let now = Date.now();
+        currentTime = (now - startTime) / 1000;
+        timerEl.innerText = `TIME: ${currentTime.toFixed(2)}s`;
 
         // Camera Follow
         if (player.y < height / 2) {
@@ -566,13 +620,11 @@
             bgText.style.opacity = 0.1 + (opacity * 0.9);
         }
 
-        // Platform Collision - FIXED MISSING FLOOR BUG
+        // Platform Collision
         player.grounded = false;
         for (let p of platforms) {
             let pScreenY = p.y + cameraY;
             
-            // IMPORTANT FIX: Check platforms even if they are slightly below screen (height + 150)
-            // This prevents the "floor disappearing" issue when jumping
             if (pScreenY < -50 || pScreenY > height + 150) continue;
 
             if (player.vy > 0 && 
@@ -592,7 +644,7 @@
             handleLevelComplete();
         }
 
-        // GAME OVER Condition - Gives extra margin before death
+        // GAME OVER Condition
         if (player.y > height + 50) {
             triggerGameOver();
         }
@@ -603,7 +655,6 @@
 
         for (let p of platforms) {
             let pScreenY = p.y + cameraY;
-            // Draw even if slightly off screen to match collision logic
             if (pScreenY > -50 && pScreenY < height + 150) {
                 let originalY = p.y;
                 p.y = pScreenY;
@@ -643,6 +694,7 @@
     function handleLevelComplete() {
         gameActive = false;
         if (currentStage === 1) {
+            document.getElementById('stage1-time-result').innerText = `Stage 1 Completed in: ${currentTime.toFixed(2)}s`;
             nextLevelScreen.classList.remove('hidden');
         } else {
             gameWin();
@@ -656,6 +708,7 @@
 
     function gameWin() {
         gameActive = false;
+        document.getElementById('stage2-time-result').innerText = `Stage 2 Completed in: ${currentTime.toFixed(2)}s`;
         winScreen.classList.remove('hidden');
         ctx.clearRect(0, 0, width, height);
         goal.y = height/2 - 50; 
