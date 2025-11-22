@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Dark Knight's Ascent</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Anton&family=Cinzel:wght@700&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #05070a;
+            overflow: hidden;
+            font-family: 'Anton', sans-serif;
+            color: white;
+            touch-action: none; /* Prevent scrolling on mobile */
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, #000000, #09141d, #1c3b4a);
+        }
+
+        #background-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 15vw;
+            text-align: center;
+            line-height: 0.85;
+            opacity: 0.1;
+            pointer-events: none;
+            white-space: nowrap;
+            background: linear-gradient(to bottom, #fff, #5f8d9e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            z-index: 0;
+            transition: opacity 2s ease;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #score {
+            font-family: 'Cinzel', serif;
+            font-size: 24px;
+            text-shadow: 0 0 10px #00d2ff;
+        }
+
+        #controls-hint {
+            text-align: center;
+            font-size: 18px;
+            opacity: 0.7;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            animation: pulse 2s infinite;
+        }
+
+        #start-screen, #win-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 30;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        h1 {
+            font-size: 4rem;
+            margin: 0;
+            text-transform: uppercase;
+            background: linear-gradient(to bottom, #fff, #7aaebf);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 15px rgba(0, 210, 255, 0.5));
+        }
+
+        p {
+            font-family: 'Cinzel', serif;
+            font-size: 1.2rem;
+            max-width: 600px;
+            margin: 20px;
+            line-height: 1.5;
+            color: #ccc;
+        }
+
+        button {
+            background: transparent;
+            border: 2px solid #00d2ff;
+            color: #00d2ff;
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            font-family: 'Anton', sans-serif;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(0, 210, 255, 0.2);
+        }
+
+        button:hover {
+            background: #00d2ff;
+            color: #000;
+            box-shadow: 0 0 30px rgba(0, 210, 255, 0.8);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+
+        /* Cross Glow Animation */
+        @keyframes holy-glow {
+            0% { filter: drop-shadow(0 0 10px white); }
+            50% { filter: drop-shadow(0 0 30px cyan); }
+            100% { filter: drop-shadow(0 0 10px white); }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="background-text">
+        JESUS<br>IS GOD
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <div id="score">ALTITUDE: 0m</div>
+        <div id="controls-hint">Use Left/Right Arrows to Move • Space to Jump</div>
+    </div>
+
+    <div id="start-screen">
+        <h1>Marcilino Ascent</h1>
+        <p>Gotham is drowning in darkness. Only the light above can save it.</p>
+        <p>Ascend through the rain. Reach the Cross.</p>
+        <button id="start-btn">Begin Crusade</button>
+    </div>
+
+    <div id="win-screen" class="hidden">
+        <h1 style="font-size: 6rem;">REDEMPTION</h1>
+        <p>You have reached the light.</p>
+        <button id="restart-btn">Descend Again</button>
+    </div>
+</div>
+
+<script>
+    // --- Setup ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const startScreen = document.getElementById('start-screen');
+    const winScreen = document.getElementById('win-screen');
+    const startBtn = document.getElementById('start-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const bgText = document.getElementById('background-text');
+
+    let width, height;
+    let animationId;
+    let gameActive = false;
+    let score = 0;
+    let winHeight = 5000; // Height to reach
+    let cameraY = 0;
+
+    // --- Resize Handling ---
+    function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // --- Input Handling ---
+    const keys = {
+        ArrowLeft: false,
+        ArrowRight: false,
+        Space: false
+    };
+
+    window.addEventListener('keydown', (e) => {
+        if(e.code === 'Space') keys.Space = true;
+        if(e.code === 'ArrowLeft') keys.ArrowLeft = true;
+        if(e.code === 'ArrowRight') keys.ArrowRight = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if(e.code === 'Space') keys.Space = false;
+        if(e.code === 'ArrowLeft') keys.ArrowLeft = false;
+        if(e.code === 'ArrowRight') keys.ArrowRight = false;
+    });
+
+    // Touch controls for mobile
+    let touchStartX = 0;
+    window.addEventListener('touchstart', (e) => {
+        touchStartX = e.touches[0].clientX;
+        keys.Space = true; // Auto jump on tap
+    });
+    window.addEventListener('touchmove', (e) => {
+        const touchX = e.touches[0].clientX;
+        if (touchX < touchStartX - 20) { keys.ArrowLeft = true; keys.ArrowRight = false; }
+        else if (touchX > touchStartX + 20) { keys.ArrowRight = true; keys.ArrowLeft = false; }
+        else { keys.ArrowLeft = false; keys.ArrowRight = false; }
+    });
+    window.addEventListener('touchend', () => {
+        keys.Space = false;
+        keys.ArrowLeft = false;
+        keys.ArrowRight = false;
+    });
+
+    // --- Game Objects ---
+
+    class Player {
+        constructor() {
+            this.w = 40;
+            this.h = 60;
+            this.x = width / 2 - this.w / 2;
+            this.y = height - 150;
+            this.vx = 0;
+            this.vy = 0;
+            this.speed = 6;
+            this.jumpStrength = -18; // Increased jump power
+            this.gravity = 0.6;
+            this.grounded = false;
+            this.facingRight = true;
+        }
+
+        update() {
+            // Horizontal Movement
+            if (keys.ArrowLeft) {
+                this.vx = -this.speed;
+                this.facingRight = false;
+            } else if (keys.ArrowRight) {
+                this.vx = this.speed;
+                this.facingRight = true;
+            } else {
+                this.vx *= 0.8; // Friction
+            }
+
+            this.x += this.vx;
+
+            // Screen wrapping
+            if (this.x + this.w < 0) this.x = width;
+            if (this.x > width) this.x = -this.w;
+
+            // Vertical Movement
+            if (keys.Space && this.grounded) {
+                this.vy = this.jumpStrength;
+                this.grounded = false;
+            }
+
+            this.vy += this.gravity;
+            this.y += this.vy;
+
+            // Floor collision (only at the very start)
+            if (this.y + this.h > height && cameraY === 0) {
+                this.y = height - this.h;
+                this.vy = 0;
+                this.grounded = true;
+            }
+        }
+
+        draw() {
+            ctx.save();
+            ctx.translate(this.x + this.w/2, this.y + this.h/2);
+            if (!this.facingRight) ctx.scale(-1, 1);
+            
+            // Draw Batman Silhouette
+            ctx.fillStyle = '#000';
+            
+            // Cape
+            ctx.beginPath();
+            ctx.moveTo(-15, -20);
+            ctx.quadraticCurveTo(-25, 10, -20, 30); // Left edge
+            ctx.lineTo(20, 30);
+            ctx.quadraticCurveTo(25, 10, 15, -20); // Right edge
+            ctx.fill();
+
+            // Body
+            ctx.fillRect(-10, -20, 20, 50);
+
+            // Cowl/Head
+            ctx.beginPath();
+            ctx.moveTo(-8, -20);
+            ctx.lineTo(-8, -35); // Left Ear
+            ctx.lineTo(-3, -25);
+            ctx.lineTo(3, -25);
+            ctx.lineTo(8, -35); // Right Ear
+            ctx.lineTo(8, -20);
+            ctx.fill();
+
+            // Eyes (Glowing)
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(-5, -28);
+            ctx.lineTo(-1, -26);
+            ctx.lineTo(-5, -26);
+            ctx.fill();
+            
+            ctx.restore();
+        }
+    }
+
+    class Platform {
+        constructor(x, y, w) {
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = 15;
+            this.type = Math.random() > 0.8 ? 'gargoyle' : 'beam';
+        }
+
+        draw() {
+            if (this.type === 'gargoyle') {
+                // Stone look
+                ctx.fillStyle = '#3a3a3a';
+                ctx.fillRect(this.x, this.y, this.w, this.h);
+                // Detail
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y + this.h);
+                ctx.lineTo(this.x + 10, this.y + this.h + 10);
+                ctx.lineTo(this.x + this.w - 10, this.y + this.h + 10);
+                ctx.lineTo(this.x + this.w, this.y + this.h);
+                ctx.fill();
+            } else {
+                // Steel beam look
+                ctx.fillStyle = '#1c3b4a';
+                ctx.fillRect(this.x, this.y, this.w, this.h);
+                ctx.strokeStyle = '#3e6b80';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(this.x, this.y, this.w, this.h);
+            }
+        }
+    }
+
+    class Rain {
+        constructor() {
+            this.drops = [];
+            this.count = 200;
+            for(let i=0; i<this.count; i++) {
+                this.drops.push(this.resetDrop());
+            }
+        }
+
+        resetDrop() {
+            return {
+                x: Math.random() * width,
+                y: Math.random() * height,
+                l: Math.random() * 20 + 10,
+                s: Math.random() * 10 + 10
+            };
+        }
+
+        updateAndDraw() {
+            ctx.strokeStyle = 'rgba(174, 194, 224, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let d of this.drops) {
+                ctx.moveTo(d.x, d.y);
+                ctx.lineTo(d.x, d.y + d.l);
+                d.y += d.s;
+                if (d.y > height) {
+                    Object.assign(d, this.resetDrop());
+                    d.y = -d.l;
+                }
+            }
+            ctx.stroke();
+        }
+    }
+
+    class TheCross {
+        constructor() {
+            this.y = -winHeight + 100;
+            this.w = 60;
+            this.h = 100;
+            this.glow = 0;
+            this.glowDir = 1;
+        }
+
+        draw() {
+            // Position relative to camera
+            let drawY = this.y + cameraY;
+            let drawX = width / 2;
+
+            // Glow animation
+            this.glow += 0.5 * this.glowDir;
+            if (this.glow > 30 || this.glow < 10) this.glowDir *= -1;
+
+            ctx.save();
+            ctx.translate(drawX, drawY);
+            
+            // Glow
+            ctx.shadowBlur = this.glow + 20;
+            ctx.shadowColor = 'white';
+            
+            // Cross Shape
+            ctx.fillStyle = '#fff';
+            // Vertical
+            ctx.fillRect(-10, -50, 20, 100);
+            // Horizontal
+            ctx.fillRect(-35, -20, 70, 20);
+
+            // Metallic shine
+            ctx.fillStyle = 'rgba(200,240,255,0.5)';
+            ctx.fillRect(-5, -50, 5, 100);
+
+            ctx.restore();
+        }
+    }
+
+    // --- Game Logic ---
+
+    let player;
+    let platforms = [];
+    let rain;
+    let goal;
+
+    function initGame() {
+        player = new Player();
+        rain = new Rain();
+        goal = new TheCross();
+        platforms = [];
+        cameraY = 0;
+        score = 0;
+        
+        // Initial Platform
+        platforms.push(new Platform(width/2 - 100, height - 50, 200));
+
+        // Generate Platforms up to the goal
+        let currentY = height - 150;
+        while (currentY > -winHeight) {
+            let gap = 100 + Math.random() * 60; // Vertical gap
+            currentY -= gap;
+            let pWidth = 80 + Math.random() * 100;
+            let pX = Math.random() * (width - pWidth);
+            platforms.push(new Platform(pX, currentY, pWidth));
+        }
+    }
+
+    function update() {
+        if (!gameActive) return;
+
+        player.update();
+
+        // Camera Follow (Vertical Scrolling)
+        // If player goes above 1/2 screen, move everything down
+        if (player.y < height / 2) {
+            let diff = (height / 2) - player.y;
+            player.y = height / 2;
+            cameraY += diff;
+            score += Math.floor(diff);
+            
+            // Parallax bg text
+            let opacity = Math.min(1, score / winHeight);
+            bgText.style.opacity = 0.1 + (opacity * 0.9);
+            bgText.style.transform = `translate(-50%, -50%) scale(${1 + opacity * 0.5})`;
+        }
+
+        // Platform Collision
+        player.grounded = false;
+        for (let p of platforms) {
+            // Check if platform is on screen
+            let pScreenY = p.y + cameraY;
+            if (pScreenY > height || pScreenY < -50) continue;
+
+            // Simple AABB collision (only when falling)
+            if (player.vy > 0 && 
+                player.x + player.w > p.x && 
+                player.x < p.x + p.w &&
+                player.y + player.h > pScreenY &&
+                player.y + player.h < pScreenY + p.h + player.vy + 5) { // +5 tolerance
+                
+                player.y = pScreenY - player.h;
+                player.vy = 0;
+                player.grounded = true;
+            }
+        }
+
+        // Win Condition
+        if (score >= winHeight) {
+            gameWin();
+        }
+
+        // Lose Condition (Fall off bottom of screen)
+        if (player.y > height) {
+            // Reset player slightly above lowest visible platform or restart
+            // For this vibe, let's just bounce them up or restart. 
+            // Let's make it forgiving: bounce up with penalty.
+            player.vy = -25; 
+            score = Math.max(0, score - 500);
+            cameraY -= 200; // Drop camera
+        }
+    }
+
+    function draw() {
+        // Clear
+        ctx.clearRect(0, 0, width, height);
+
+        // Draw Platforms
+        for (let p of platforms) {
+            let pScreenY = p.y + cameraY;
+            if (pScreenY > -50 && pScreenY < height + 50) {
+                // Temporarily modify Y for drawing
+                let originalY = p.y;
+                p.y = pScreenY;
+                p.draw();
+                p.y = originalY;
+            }
+        }
+
+        // Draw Goal
+        goal.draw();
+
+        // Draw Player
+        player.draw();
+
+        // Draw Rain (Overlay)
+        rain.updateAndDraw();
+
+        // UI
+        scoreEl.innerText = `ALTITUDE: ${Math.floor(score/10)}m`;
+    }
+
+    function loop() {
+        update();
+        draw();
+        if (gameActive) requestAnimationFrame(loop);
+    }
+
+    function startGame() {
+        startScreen.classList.add('hidden');
+        winScreen.classList.add('hidden');
+        gameActive = true;
+        initGame();
+        loop();
+    }
+
+    function gameWin() {
+        gameActive = false;
+        winScreen.classList.remove('hidden');
+        // Final draw to show the cross clearly
+        ctx.clearRect(0, 0, width, height);
+        goal.y = height/2 - 50; // Center the cross
+        cameraY = 0;
+        goal.draw();
+        player.x = width/2 - player.w/2;
+        player.y = height/2 + 60;
+        player.draw();
+        rain.updateAndDraw();
+    }
+
+    startBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('click', startGame);
+
+    // Initial Render for background
+    resize();
+    rain = new Rain();
+    function bgLoop() {
+        if (!gameActive) {
+            ctx.clearRect(0, 0, width, height);
+            rain.updateAndDraw();
+            requestAnimationFrame(bgLoop);
+        }
+    }
+    bgLoop();
+
+</script>
+</body>
+</html>
